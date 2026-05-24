@@ -1,0 +1,593 @@
+REM ###########################################################################################
+REM #                                                                                         #
+REM # Title     : Linux Persistence Hunter                                                     #
+REM # Author    : NullSec (bad-antics)                                                         #
+REM # Version   : 1.0                                                                         #
+REM # Category  : incident-response                                                            #
+REM # Target    : GNU/Linux                                                                    #
+REM #                                                                                         #
+REM ###########################################################################################
+
+REM Description: Hunts for persistence mechanisms commonly used by attackers on Linux.
+REM Checks systemd services, init scripts, shell profiles, LD_PRELOAD hijacks,
+REM PAM backdoors, kernel module loading, at jobs, XDG autostart, and more.
+REM Designed for blue team / DFIR use.
+
+DELAY 3000
+CTRL-ALT t
+DELAY 1500
+
+STRING cat << 'NULLSEC_EOF' > /tmp/.nullsec_persist_hunt.sh
+ENTER
+DELAY 200
+
+STRING #!/bin/bash
+ENTER
+DELAY 200
+
+STRING # NullSec Linux Persistence Hunter v1.0
+ENTER
+DELAY 200
+
+STRING RED='\033[0;31m'; YEL='\033[1;33m'; GRN='\033[0;32m'; CYN='\033[0;36m'; NC='\033[0m'
+ENTER
+DELAY 200
+
+STRING FINDINGS=0
+ENTER
+DELAY 200
+
+STRING REPORT="/tmp/nullsec_persistence_$(hostname)_$(date +%Y%m%d_%H%M%S).txt"
+ENTER
+DELAY 200
+
+STRING log() { echo -e "$1" | tee -a "$REPORT"; }
+ENTER
+DELAY 200
+
+STRING finding() { FINDINGS=$((FINDINGS+1)); log "${RED}[!] FINDING #${FINDINGS}: $1${NC}"; }
+ENTER
+DELAY 200
+
+STRING info() { log "${CYN}[*] $1${NC}"; }
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING log " NullSec Persistence Hunter"
+ENTER
+DELAY 200
+
+STRING log " Host: $(hostname) | $(date -u)"
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 1. Systemd service/timer persistence
+ENTER
+DELAY 200
+
+STRING info "Checking systemd services for persistence..."
+ENTER
+DELAY 200
+
+STRING for dir in /etc/systemd/system /usr/lib/systemd/system ~/.config/systemd/user; do
+ENTER
+DELAY 200
+
+STRING   if [ -d "$dir" ]; then
+ENTER
+DELAY 200
+
+STRING     CUSTOM=$(find "$dir" -name "*.service" -o -name "*.timer" 2>/dev/null | while read f; do
+ENTER
+DELAY 200
+
+STRING       grep -lE '(curl|wget|/tmp/|/dev/shm|python|perl|nc |ncat|bash -c|base64)' "$f" 2>/dev/null
+ENTER
+DELAY 200
+
+STRING     done)
+ENTER
+DELAY 200
+
+STRING     if [ -n "$CUSTOM" ]; then
+ENTER
+DELAY 200
+
+STRING       finding "Suspicious systemd unit files: $CUSTOM"
+ENTER
+DELAY 200
+
+STRING       for f in $CUSTOM; do cat "$f" >> "$REPORT" 2>/dev/null; done
+ENTER
+DELAY 200
+
+STRING     fi
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING done
+ENTER
+DELAY 200
+
+STRING # Recently created systemd units
+ENTER
+DELAY 200
+
+STRING RECENT_UNITS=$(find /etc/systemd/system -type f -mtime -7 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING if [ -n "$RECENT_UNITS" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Recently created/modified systemd units (last 7 days):"
+ENTER
+DELAY 200
+
+STRING   echo "$RECENT_UNITS" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 2. Shell profile persistence
+ENTER
+DELAY 200
+
+STRING info "Checking shell profile files for persistence..."
+ENTER
+DELAY 200
+
+STRING PROFILES=".bashrc .bash_profile .profile .bash_login .bash_logout .zshrc .zprofile"
+ENTER
+DELAY 200
+
+STRING for homedir in /root /home/*; do
+ENTER
+DELAY 200
+
+STRING   for prof in $PROFILES; do
+ENTER
+DELAY 200
+
+STRING     if [ -f "$homedir/$prof" ]; then
+ENTER
+DELAY 200
+
+STRING       SUSPICIOUS=$(grep -nE '(curl|wget|nc |ncat |python.*-c|perl.*-e|base64|/dev/tcp|eval|exec.*<|\..*\..*\.|socat)' "$homedir/$prof" 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING       if [ -n "$SUSPICIOUS" ]; then
+ENTER
+DELAY 200
+
+STRING         finding "Suspicious entry in $homedir/$prof:"
+ENTER
+DELAY 200
+
+STRING         echo "$SUSPICIOUS" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING       fi
+ENTER
+DELAY 200
+
+STRING     fi
+ENTER
+DELAY 200
+
+STRING   done
+ENTER
+DELAY 200
+
+STRING done
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 3. LD_PRELOAD hijacking
+ENTER
+DELAY 200
+
+STRING info "Checking for LD_PRELOAD hijacking..."
+ENTER
+DELAY 200
+
+STRING if [ -f /etc/ld.so.preload ]; then
+ENTER
+DELAY 200
+
+STRING   PRELOAD_CONTENT=$(cat /etc/ld.so.preload 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING   if [ -n "$PRELOAD_CONTENT" ]; then
+ENTER
+DELAY 200
+
+STRING     finding "LD_PRELOAD hijack detected in /etc/ld.so.preload:"
+ENTER
+DELAY 200
+
+STRING     echo "$PRELOAD_CONTENT" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING ENV_PRELOAD=$(env 2>/dev/null | grep LD_PRELOAD)
+ENTER
+DELAY 200
+
+STRING if [ -n "$ENV_PRELOAD" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "LD_PRELOAD set in environment: $ENV_PRELOAD"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 4. Init script persistence
+ENTER
+DELAY 200
+
+STRING info "Checking init scripts..."
+ENTER
+DELAY 200
+
+STRING RC_SUSPECT=$(find /etc/init.d /etc/rc.local /etc/rc*.d 2>/dev/null -type f -mtime -30 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING if [ -n "$RC_SUSPECT" ]; then
+ENTER
+DELAY 200
+
+STRING   log "  Recently modified init scripts:"
+ENTER
+DELAY 200
+
+STRING   echo "$RC_SUSPECT" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING if [ -f /etc/rc.local ] && [ -s /etc/rc.local ]; then
+ENTER
+DELAY 200
+
+STRING   RCLOCAL=$(grep -vE '^(#|$|exit 0)' /etc/rc.local 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING   if [ -n "$RCLOCAL" ]; then
+ENTER
+DELAY 200
+
+STRING     finding "Active commands in /etc/rc.local:"
+ENTER
+DELAY 200
+
+STRING     echo "$RCLOCAL" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 5. XDG Autostart
+ENTER
+DELAY 200
+
+STRING info "Checking XDG autostart entries..."
+ENTER
+DELAY 200
+
+STRING for dir in /etc/xdg/autostart ~/.config/autostart; do
+ENTER
+DELAY 200
+
+STRING   if [ -d "$dir" ]; then
+ENTER
+DELAY 200
+
+STRING     AUTOSTART=$(find "$dir" -name "*.desktop" -mtime -30 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING     if [ -n "$AUTOSTART" ]; then
+ENTER
+DELAY 200
+
+STRING       log "  Recent autostart entries in $dir:"
+ENTER
+DELAY 200
+
+STRING       for f in $AUTOSTART; do
+ENTER
+DELAY 200
+
+STRING         grep -H "Exec=" "$f" >> "$REPORT" 2>/dev/null
+ENTER
+DELAY 200
+
+STRING       done
+ENTER
+DELAY 200
+
+STRING     fi
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING done
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 6. At jobs
+ENTER
+DELAY 200
+
+STRING info "Checking at queue..."
+ENTER
+DELAY 200
+
+STRING ATJOBS=$(atq 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING if [ -n "$ATJOBS" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Active at jobs found:"
+ENTER
+DELAY 200
+
+STRING   echo "$ATJOBS" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 7. Unusual kernel modules
+ENTER
+DELAY 200
+
+STRING info "Checking for suspicious kernel modules..."
+ENTER
+DELAY 200
+
+STRING # Modules loaded from non-standard paths
+ENTER
+DELAY 200
+
+STRING OOT_MODULES=$(lsmod 2>/dev/null | awk 'NR>1 {print $1}' | while read mod; do
+ENTER
+DELAY 200
+
+STRING   modpath=$(modinfo "$mod" 2>/dev/null | grep "^filename:" | awk '{print $2}')
+ENTER
+DELAY 200
+
+STRING   if [ -n "$modpath" ] && ! echo "$modpath" | grep -qE '^/lib/modules/'; then
+ENTER
+DELAY 200
+
+STRING     echo "$mod: $modpath"
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING done)
+ENTER
+DELAY 200
+
+STRING if [ -n "$OOT_MODULES" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Out-of-tree kernel modules detected:"
+ENTER
+DELAY 200
+
+STRING   echo "$OOT_MODULES" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 8. PAM configuration
+ENTER
+DELAY 200
+
+STRING info "Checking PAM configuration..."
+ENTER
+DELAY 200
+
+STRING PAM_SUSPECT=$(find /etc/pam.d -type f 2>/dev/null -exec grep -lE '(pam_exec|pam_script|pam_debug)' {} \;)
+ENTER
+DELAY 200
+
+STRING if [ -n "$PAM_SUSPECT" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Suspicious PAM modules configured:"
+ENTER
+DELAY 200
+
+STRING   echo "$PAM_SUSPECT" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING   for f in $PAM_SUSPECT; do grep -E '(pam_exec|pam_script)' "$f" >> "$REPORT" 2>/dev/null; done
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # 9. Motd/update-motd persistence
+ENTER
+DELAY 200
+
+STRING info "Checking motd scripts..."
+ENTER
+DELAY 200
+
+STRING if [ -d /etc/update-motd.d ]; then
+ENTER
+DELAY 200
+
+STRING   MOTD_SUSPECT=$(find /etc/update-motd.d -type f -mtime -7 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING   if [ -n "$MOTD_SUSPECT" ]; then
+ENTER
+DELAY 200
+
+STRING     log "  Recently modified motd scripts:"
+ENTER
+DELAY 200
+
+STRING     echo "$MOTD_SUSPECT" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Summary
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING if [ "$FINDINGS" -gt 0 ]; then
+ENTER
+DELAY 200
+
+STRING   log "${RED}[!] HUNT COMPLETE: $FINDINGS persistence mechanism(s) found!${NC}"
+ENTER
+DELAY 200
+
+STRING else
+ENTER
+DELAY 200
+
+STRING   log "${GRN}[+] HUNT COMPLETE: No obvious persistence mechanisms detected.${NC}"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log "Full report: $REPORT"
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING NULLSEC_EOF
+ENTER
+DELAY 500
+
+STRING chmod +x /tmp/.nullsec_persist_hunt.sh && bash /tmp/.nullsec_persist_hunt.sh && rm -f /tmp/.nullsec_persist_hunt.sh && exit
+ENTER

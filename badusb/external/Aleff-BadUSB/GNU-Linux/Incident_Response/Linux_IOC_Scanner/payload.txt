@@ -1,0 +1,484 @@
+REM ###########################################################################################
+REM #                                                                                         #
+REM # Title     : Linux IOC Scanner - Indicator of Compromise Detector                        #
+REM # Author    : NullSec (bad-antics)                                                         #
+REM # Version   : 1.0                                                                         #
+REM # Category  : incident-response                                                            #
+REM # Target    : GNU/Linux                                                                    #
+REM #                                                                                         #
+REM ###########################################################################################
+
+REM Description: Scans a Linux system for common Indicators of Compromise (IOCs).
+REM Checks for: suspicious SUID binaries, unauthorized SSH keys, hidden processes,
+REM unusual cron entries, world-writable files in sensitive dirs, rogue user accounts,
+REM suspicious network listeners, and known malware file patterns.
+REM
+REM This is a DETECTION payload, not an exploitation payload.
+REM Designed for blue team / incident response use.
+
+DELAY 3000
+CTRL-ALT t
+DELAY 1500
+
+STRING cat << 'NULLSEC_EOF' > /tmp/.nullsec_ioc_scan.sh
+ENTER
+DELAY 200
+
+STRING #!/bin/bash
+ENTER
+DELAY 200
+
+STRING # NullSec Linux IOC Scanner v1.0
+ENTER
+DELAY 200
+
+STRING RED='\033[0;31m'; YEL='\033[1;33m'; GRN='\033[0;32m'; NC='\033[0m'
+ENTER
+DELAY 200
+
+STRING FINDINGS=0
+ENTER
+DELAY 200
+
+STRING REPORT="/tmp/nullsec_ioc_$(hostname)_$(date +%Y%m%d_%H%M%S).txt"
+ENTER
+DELAY 200
+
+STRING log() { echo -e "$1" | tee -a "$REPORT"; }
+ENTER
+DELAY 200
+
+STRING finding() { FINDINGS=$((FINDINGS+1)); log "${RED}[!] FINDING #${FINDINGS}: $1${NC}"; }
+ENTER
+DELAY 200
+
+STRING ok() { log "${GRN}[+] $1${NC}"; }
+ENTER
+DELAY 200
+
+STRING info() { log "${YEL}[*] $1${NC}"; }
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING log " NullSec IOC Scanner Report"
+ENTER
+DELAY 200
+
+STRING log " Host: $(hostname) | $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 1: Unusual SUID/SGID binaries
+ENTER
+DELAY 200
+
+STRING info "Scanning for unusual SUID/SGID binaries..."
+ENTER
+DELAY 200
+
+STRING KNOWN_SUID="/usr/bin/sudo /usr/bin/su /usr/bin/passwd /usr/bin/chsh /usr/bin/chfn /usr/bin/newgrp /usr/bin/gpasswd /usr/bin/mount /usr/bin/umount /usr/bin/pkexec /usr/bin/crontab /usr/bin/at /usr/bin/ssh-agent /usr/lib/openssh/ssh-keysign /usr/lib/dbus-1.0/dbus-daemon-launch-helper"
+ENTER
+DELAY 200
+
+STRING SUID_FILES=$(find / -perm -4000 -type f 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING for f in $SUID_FILES; do
+ENTER
+DELAY 200
+
+STRING   if ! echo "$KNOWN_SUID" | grep -qw "$f"; then
+ENTER
+DELAY 200
+
+STRING     finding "Unusual SUID binary: $f (owner: $(stat -c '%U' "$f" 2>/dev/null))"
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING done
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 2: Unauthorized SSH authorized_keys
+ENTER
+DELAY 200
+
+STRING info "Checking for SSH authorized keys..."
+ENTER
+DELAY 200
+
+STRING for homedir in /root /home/*; do
+ENTER
+DELAY 200
+
+STRING   if [ -f "$homedir/.ssh/authorized_keys" ]; then
+ENTER
+DELAY 200
+
+STRING     KEYCOUNT=$(wc -l < "$homedir/.ssh/authorized_keys" 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING     if [ "$KEYCOUNT" -gt 0 ] 2>/dev/null; then
+ENTER
+DELAY 200
+
+STRING       finding "SSH authorized_keys found: $homedir/.ssh/authorized_keys ($KEYCOUNT keys)"
+ENTER
+DELAY 200
+
+STRING       cat "$homedir/.ssh/authorized_keys" >> "$REPORT" 2>/dev/null
+ENTER
+DELAY 200
+
+STRING     fi
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING done
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 3: Suspicious processes
+ENTER
+DELAY 200
+
+STRING info "Checking for suspicious processes..."
+ENTER
+DELAY 200
+
+STRING # Processes running from /tmp, /dev/shm, or hidden dirs
+ENTER
+DELAY 200
+
+STRING SUSPICIOUS_PROCS=$(ps aux 2>/dev/null | grep -E '(/tmp/|/dev/shm/|/var/tmp/|\./\.)' | grep -v grep)
+ENTER
+DELAY 200
+
+STRING if [ -n "$SUSPICIOUS_PROCS" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Processes running from suspicious locations:"
+ENTER
+DELAY 200
+
+STRING   echo "$SUSPICIOUS_PROCS" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING # Check for processes with deleted binaries
+ENTER
+DELAY 200
+
+STRING DELETED_PROCS=$(ls -la /proc/*/exe 2>/dev/null | grep '(deleted)')
+ENTER
+DELAY 200
+
+STRING if [ -n "$DELETED_PROCS" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Processes with deleted binaries (possible malware):"
+ENTER
+DELAY 200
+
+STRING   echo "$DELETED_PROCS" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 4: Rogue user accounts
+ENTER
+DELAY 200
+
+STRING info "Checking for rogue user accounts..."
+ENTER
+DELAY 200
+
+STRING # UID 0 accounts (should only be root)
+ENTER
+DELAY 200
+
+STRING UID0=$(awk -F: '$3 == 0 && $1 != "root" {print $1}' /etc/passwd 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING if [ -n "$UID0" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Non-root UID 0 accounts found: $UID0"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING # Accounts with login shells that shouldn't have them
+ENTER
+DELAY 200
+
+STRING SHELL_ACCTS=$(awk -F: '$7 ~ /(bash|sh|zsh|fish)$/ && $3 >= 1000 {print $1":"$3":"$6":"$7}' /etc/passwd 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING log "  Accounts with login shells: "
+ENTER
+DELAY 200
+
+STRING echo "$SHELL_ACCTS" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 5: Suspicious cron entries
+ENTER
+DELAY 200
+
+STRING info "Checking for suspicious cron entries..."
+ENTER
+DELAY 200
+
+STRING for user in $(cut -d: -f1 /etc/passwd 2>/dev/null); do
+ENTER
+DELAY 200
+
+STRING   CRON=$(crontab -u "$user" -l 2>/dev/null | grep -v '^#' | grep -v '^$')
+ENTER
+DELAY 200
+
+STRING   if [ -n "$CRON" ]; then
+ENTER
+DELAY 200
+
+STRING     log "  Cron for $user:"
+ENTER
+DELAY 200
+
+STRING     echo "$CRON" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING     # Flag if cron downloads or executes from /tmp
+ENTER
+DELAY 200
+
+STRING     echo "$CRON" | grep -iE '(curl|wget|/tmp/|/dev/shm|base64|python.*-c|perl.*-e|nc |ncat )' && finding "Suspicious cron entry for user $user"
+ENTER
+DELAY 200
+
+STRING   fi
+ENTER
+DELAY 200
+
+STRING done
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 6: Suspicious network listeners
+ENTER
+DELAY 200
+
+STRING info "Checking for suspicious network listeners..."
+ENTER
+DELAY 200
+
+STRING LISTENERS=$(ss -tlnp 2>/dev/null | grep -vE '(sshd|systemd|cupsd|dnsmasq|nginx|apache|httpd|postgres|mysql|docker)')
+ENTER
+DELAY 200
+
+STRING log "  Non-standard listeners:"
+ENTER
+DELAY 200
+
+STRING echo "$LISTENERS" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 7: Files in suspicious locations
+ENTER
+DELAY 200
+
+STRING info "Checking for suspicious files..."
+ENTER
+DELAY 200
+
+STRING # Executables in /tmp or /dev/shm
+ENTER
+DELAY 200
+
+STRING TMPEXEC=$(find /tmp /dev/shm /var/tmp -type f -executable 2>/dev/null)
+ENTER
+DELAY 200
+
+STRING if [ -n "$TMPEXEC" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Executable files in temp directories:"
+ENTER
+DELAY 200
+
+STRING   echo "$TMPEXEC" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING # Hidden files in /tmp
+ENTER
+DELAY 200
+
+STRING TMPHIDDEN=$(find /tmp -name ".*" -type f 2>/dev/null | grep -v '.nullsec')
+ENTER
+DELAY 200
+
+STRING if [ -n "$TMPHIDDEN" ]; then
+ENTER
+DELAY 200
+
+STRING   finding "Hidden files in /tmp:"
+ENTER
+DELAY 200
+
+STRING   echo "$TMPHIDDEN" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Check 8: Recently modified system files
+ENTER
+DELAY 200
+
+STRING info "Checking recently modified system files..."
+ENTER
+DELAY 200
+
+STRING SYSMOD=$(find /etc -type f -mtime -3 2>/dev/null | head -20)
+ENTER
+DELAY 200
+
+STRING if [ -n "$SYSMOD" ]; then
+ENTER
+DELAY 200
+
+STRING   log "  System files modified in last 3 days:"
+ENTER
+DELAY 200
+
+STRING   echo "$SYSMOD" >> "$REPORT"
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log ""
+ENTER
+DELAY 200
+
+STRING # Summary
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING if [ "$FINDINGS" -gt 0 ]; then
+ENTER
+DELAY 200
+
+STRING   log "${RED}[!] SCAN COMPLETE: $FINDINGS finding(s) detected!${NC}"
+ENTER
+DELAY 200
+
+STRING else
+ENTER
+DELAY 200
+
+STRING   ok "SCAN COMPLETE: No obvious IOCs detected."
+ENTER
+DELAY 200
+
+STRING fi
+ENTER
+DELAY 200
+
+STRING log "Report saved to: $REPORT"
+ENTER
+DELAY 200
+
+STRING log "============================================"
+ENTER
+DELAY 200
+
+STRING NULLSEC_EOF
+ENTER
+DELAY 500
+
+STRING chmod +x /tmp/.nullsec_ioc_scan.sh && bash /tmp/.nullsec_ioc_scan.sh && rm -f /tmp/.nullsec_ioc_scan.sh && exit
+ENTER
